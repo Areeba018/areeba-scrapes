@@ -1,0 +1,114 @@
+[
+    {
+        "outter_brand_id": 10096,
+        "outter_brand_name": "比亚迪",
+        "series": [
+            {
+                "series_id": -1,
+                "series_name": "全部车型"
+            },
+            {
+                "series_id": 25137,
+                "series_name": "海豹05DM"
+            },
+            {
+                "series_id": 3504,
+                "series_name": "宋Pro DM"
+            }
+        ]
+    },
+    {
+        "outter_brand_id": 10055,
+        "outter_brand_name": "吉利汽车",
+        "series": [
+            {
+                "series_id": -1,
+                "series_name": "全部车型"
+            },
+            {
+                "series_id": 20154,
+                "series_name": "星愿"
+            },
+            {
+                "series_id": 4857,
+                "series_name": "星越L"
+            }
+        ]
+    },
+    {
+        "outter_brand_id": 10113,
+        "outter_brand_name": "理想汽车",
+        "series": [
+            {
+                "series_id": -1,
+                "series_name": "全部车型"
+            },
+            {
+                "series_id": 5845,
+                "series_name": "理想L6"
+            },
+            {
+                "series_id": 6173,
+                "series_name": "理想L7"
+            },
+            {
+                "series_id": 6095,
+                "series_name": "理想L8"
+            },
+            {
+                "series_id": 5227,
+                "series_name": "理想L9"
+            }
+        ]
+    },
+    {
+        "outter_brand_id": 10119,
+        "outter_brand_name": "腾势",
+        "series": [
+            {
+                "series_id": 6360,
+                "series_name": "腾势N7"
+            }
+        ]
+    },
+    {
+        "outter_brand_id": 10123,
+        "outter_brand_name": "蔚来",
+        "series": [
+            {
+                "series_id": -1,
+                "series_name": "全部车型"
+            },
+            {
+                "series_id": 5409,
+                "series_name": "蔚来ET5"
+            }
+        ]
+    },
+    {
+        "outter_brand_id": 10076,
+        "outter_brand_name": "小鹏汽车",
+        "series": [
+            {
+                "series_id": -1,
+                "series_name": "全部车型"
+            },
+            {
+                "series_id": 10170,
+                "series_name": "小鹏MONA M03"
+            },
+            {
+                "series_id": 9761,
+                "series_name": "小鹏P7+"
+            },
+            {
+                "series_id": 8895,
+                "series_name": "小鹏G6"
+            },
+            {
+                "series_id": 5461,
+                "series_name": "小鹏G9"
+            }
+        ]
+    }
+]
