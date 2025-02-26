@@ -118,26 +118,70 @@ class Scraper:
             logging.error(f"Failed to delete directory: {path} | Exception: {ex}")
     # endregion
 
-    # region MAIN SCRAPER LOGIC
-    def generate_url(self, brand_id, start_date, end_date):
-        return f"{BASE_URL}?rank_type=%E5%93%81%E7%89%8C%E6%A6%9C%E5%8D%95&id_list={brand_id}&province=%E5%85%A8%E5%9B%BD&start_date={start_date}&end_date={end_date}"
 
-    def fetch_avg_value(self, brand_id, start_date, end_date):
-        url = self.generate_url(brand_id, start_date, end_date)
+    def get_rank_type(self, brand_id, series_id):
+        """ Fetch rank type dynamically for a given brand and series """
+        params = {
+            'outter_brand_id': brand_id,
+            'series_id': series_id,
+        }
+
+        logging.info(f"Fetching rank type for brand_id {brand_id}, series_id {series_id}...")
+
+        try:
+            response = self.CLIENT.get("https://index.dongchedi.com/dzx_index/menu/rank_type", 
+                                       params=params,  timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == 0 and "menu" in data.get("data", {}):
+                    menu_list = data["data"]["menu"]
+                    if menu_list:
+                        rank_type = menu_list[0]["value"] + "榜单"
+                        logging.info(f"Extracted rank type: {rank_type}")
+                        return rank_type
+                    else:
+                        logging.warning("No menu data found.")
+                else:
+                    logging.error("Invalid response format.")
+            else:
+                logging.error(f"Request failed with status code: {response.status_code}")
+        except Exception as e:
+            logging.error(f"Error fetching rank type: {e}")
+   
+    def fetch_avg_value(self, brand_id, brand_name, series_id, series_name,start_date, date):
+        print("brand id:",brand_id)
+        print("series id:", series_id)
+        # Dynamically get the rank type
+        rank_type = self.get_rank_type(brand_id, series_id)
+        url = (
+            f"https://index.dongchedi.com/dzx_index/analyze/trend_top_event"
+            # f"?rank_type=%E8%BD%BF%E8%BD%A6%E6%A6%9C%E5%8D%95"
+            f"?rank_type={rank_type}" 
+            f"&id_list={series_id if series_id != -1 else brand_id}"
+            # f"&province=%E5%85%A8%E5%9B%BD"
+            f"&province=全国"
+            f"&start_date={start_date}"
+            f"&end_date={date}"
+        )
+        
         logging.info(f"Fetching data from URL: {url}")
 
         response = self.make_request(url)
         if response and response.status_code == 200:
             try:
                 data = response.json()
-                avg_value = data.get("data", {}).get("event", {}).get(str(brand_id), {}).get("avg_value", None)
+                print(data)
+                avg_value = data.get("data", {}).get("event", {}).get(str(series_id if series_id != -1 else brand_id), {}).get("avg_value", None)
                 return avg_value
             except (json.JSONDecodeError, KeyError):
-                logging.error(f"Error parsing avg_value for brand_id: {brand_id}")
+                logging.error(f"Error parsing avg_value for brand_id: {brand_id}, series_id: {series_id}")
                 return None
         else:
-            logging.error(f"Failed to fetch avg_value for brand_id {brand_id}. Status Code: {response.status_code if response else 'N/A'}")
+            logging.error(f"Failed to fetch avg_value for brand_id {brand_id}, series_id {series_id}. "
+                        f"Status Code: {response.status_code if response else 'N/A'}")
             return None
+
+
 
     def scrape_data(self):
         latest_date = datetime.today().date()
@@ -163,23 +207,33 @@ class Scraper:
             for brand in BRANDS_DATA:
                 brand_name = brand["outter_brand_name"]
                 brand_id = brand["outter_brand_id"]
+                
                 for series in brand["series"]:  # Iterate through the series list
+                    series_id = series["series_id"]
                     series_name = series["series_name"]
 
-                logging.info(f"Fetching avg_value for {brand_name} (ID: {brand_id})...")
+                    logging.info(f"Fetching avg_value for {brand_name} (ID: {brand_id})...")
 
-                avg_value = self.fetch_avg_value(brand_id, start_of_year, end_date)
+                  
+                    avg_value = self.fetch_avg_value(
+                        brand_id=brand_id,
+                        brand_name=brand_name,
+                        series_id=series_id,
+                        series_name=series_name,
+                        start_date=start_of_year,
+                        date=end_date
+                    )
+                    print("average value:",avg_value)
 
-                if avg_value is not None:
-                    data.append({
-                        "scrape_datetime": datetime.utcnow().isoformat(),
-                        "data_date": end_date,
-                        "brand": brand_name,
-                        "model":series_name,
-                        # "start_date": start_of_year,
-                        "avg_value": avg_value,
-                    })
-
+                    if avg_value is not None:
+                        data.append({
+                            "scrape_datetime": SCRAPE_DATETIME,
+                            "data_date": end_date,
+                            "brand": brand_name,
+                            "model": series_name,
+                            "value": avg_value,
+                        })
+                
             # Move back one year
             current_date = current_date.replace(year=current_date.year - 1)
 
