@@ -163,6 +163,8 @@ class Scraper:
             for brand in BRANDS_DATA:
                 brand_name = brand["outter_brand_name"]
                 brand_id = brand["outter_brand_id"]
+                for series in brand["series"]:  # Iterate through the series list
+                    series_name = series["series_name"]
 
                 logging.info(f"Fetching avg_value for {brand_name} (ID: {brand_id})...")
 
@@ -171,9 +173,10 @@ class Scraper:
                 if avg_value is not None:
                     data.append({
                         "scrape_datetime": datetime.utcnow().isoformat(),
+                        "data_date": end_date,
                         "brand": brand_name,
-                        "start_date": start_of_year,
-                        "end_date": end_date,
+                        "model":series_name,
+                        # "start_date": start_of_year,
                         "avg_value": avg_value,
                     })
 
