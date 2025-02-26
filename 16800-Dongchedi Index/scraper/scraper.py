@@ -135,12 +135,14 @@ class Scraper:
                 data = response.json()
                 if data.get("status") == 0 and "menu" in data.get("data", {}):
                     menu_list = data["data"]["menu"]
-                    if menu_list:
+                    if menu_list and len(menu_list) > 0:  # Check if menu_list is not empty
                         rank_type = menu_list[0]["value"] + "榜单"
                         logging.info(f"Extracted rank type: {rank_type}")
                         return rank_type
                     else:
-                        logging.warning("No menu data found.")
+                        logging.warning("Menu list is empty. No rank type available.")
+                        return None  # Return None or a default value if needed
+
                 else:
                     logging.error("Invalid response format.")
             else:
@@ -170,7 +172,6 @@ class Scraper:
         if response and response.status_code == 200:
             try:
                 data = response.json()
-                print(data)
                 avg_value = data.get("data", {}).get("event", {}).get(str(series_id if series_id != -1 else brand_id), {}).get("avg_value", None)
                 return avg_value
             except (json.JSONDecodeError, KeyError):
@@ -199,7 +200,7 @@ class Scraper:
         current_date = latest_date
         # while current_date >= start_date:
         while current_date.year > 2021:  # Stops before reaching 2021
-            end_date = current_date.strftime("%Y-%m-%d")
+            end_date = current_date         # date datatype
             start_of_year = current_date.replace(year=current_date.year - 1).strftime("%Y-%m-%d")
 
             logging.info(f"\n🔄 Processing data from {start_of_year} to {end_date}...")
@@ -233,7 +234,6 @@ class Scraper:
                             "model": series_name,
                             "value": avg_value,
                         })
-                
             # Move back one year
             current_date = current_date.replace(year=current_date.year - 1)
 
