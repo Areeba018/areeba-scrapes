@@ -5,30 +5,25 @@ import logging
 import random
 import shutil
 import csv
-from datetime import datetime, timezone, timedelta
-
+from datetime import datetime, timezone
 import requests
 import pandas as pd
 
-# region configuration
+
 BASE_URL = "https://index.dongchedi.com/dzx_index/analyze/trend_top_event"
-JOB_NAME = "Dongchedi Index Scraper"
-output_filename = os.path.join("16800-Dongchedi Index", JOB_NAME.lower().replace(" ", "-") + "-data.csv")
+JOB_NAME = "16800 Dongchedi Index Scrape using Requests"
+output_filename = (
+    JOB_NAME.split("using")[0].strip().lower().replace(" ", "-") + "-sample.csv"
+)
 SCRAPE_DATETIME = datetime.now(timezone.utc)
-PROXY_ADDRESS = os.environ.get("HTTP_PROXY")
 
-SCRIPT_PATH = os.path.realpath(__file__)
-WORKING_DIR = os.path.dirname(SCRIPT_PATH)
-# endregion
 
-# region DECORATORS
 def retry_on_failure(func):
     def wrapper(*args, **kwargs):
         MAX_ATTEMPTS = 3
         attempts = MAX_ATTEMPTS
         while attempts > 0:
             try:
-                logging.info(f"Requesting URL: {args[1]}")
                 time.sleep(random.uniform(2.5, 3.5))
                 response = func(*args, **kwargs)
                 if response and response.status_code == 200:
@@ -44,9 +39,8 @@ def retry_on_failure(func):
         logging.warning(f"All attempts failed. Unable to make successful request. URL: {args[1]}")
         return None
     return wrapper
-# endregion
 
-# region Scraper_Class
+
 class Scraper:
     def __init__(self):
         self.MASTER_LIST = []
@@ -70,9 +64,6 @@ class Scraper:
         logging.info(f"STARTING SCRAPE... {JOB_NAME}")
         time.sleep(2)
 
-
-
-    # region REQUESTS_SESSION_FUNCTIONS
     def make_session(self, headers=None):
         session = requests.Session()
         default_headers = {
@@ -90,44 +81,12 @@ class Scraper:
         elif method == "POST" and data:
             return self.CLIENT.post(url, data=data, timeout=60)
         return None
-    # endregion
-
-    # region HELPER FUNCTIONS
-    def create_dir(self, path):
-        dir_path = os.path.join(WORKING_DIR, path)
-        try:
-            dir_path = os.path.abspath(dir_path)
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
-                logging.info(f'Folder {path} created in {dir_path}')
-            else:
-                logging.info(f'Folder {path} already exists in {dir_path}')
-        except Exception as ex:
-            logging.error(f"Error creating folder {path} | Exception: {ex}")
-        finally:
-            return dir_path
-
-    def remove_dir(self, path):
-        try:
-            if os.path.exists(path):
-                shutil.rmtree(path)
-                logging.info(f'{path} removed successfully.')
-            else:
-                logging.info(f'{path} does not exist...')
-        except Exception as ex:
-            logging.error(f"Failed to delete directory: {path} | Exception: {ex}")
-    # endregion
-
 
     def get_rank_type(self, brand_id, series_id):
-        """ Fetch rank type dynamically for a given brand and series """
         params = {
             'outter_brand_id': brand_id,
             'series_id': series_id,
         }
-
-        logging.info(f"Fetching rank type for brand_id {brand_id}, series_id {series_id}...")
-
         try:
             response = self.CLIENT.get("https://index.dongchedi.com/dzx_index/menu/rank_type", 
                                        params=params,  timeout=30)
@@ -135,14 +94,13 @@ class Scraper:
                 data = response.json()
                 if data.get("status") == 0 and "menu" in data.get("data", {}):
                     menu_list = data["data"]["menu"]
-                    if menu_list and len(menu_list) > 0:  # Check if menu_list is not empty
+                    if menu_list and len(menu_list) > 0:
                         rank_type = menu_list[0]["value"] + "榜单"
-                        logging.info(f"Extracted rank type: {rank_type}")
+                       
                         return rank_type
                     else:
                         logging.warning("Menu list is empty. No rank type available.")
-                        return None  # Return None or a default value if needed
-
+                        return None
                 else:
                     logging.error("Invalid response format.")
             else:
@@ -151,25 +109,19 @@ class Scraper:
             logging.error(f"Error fetching rank type: {e}")
    
     def fetch_avg_value(self, brand_id, brand_name, series_id, series_name,start_date, date):
-        print("brand id:",brand_id)
-        print("series id:", series_id)
-        # Dynamically get the rank type
         rank_type = self.get_rank_type(brand_id, series_id)
         url = (
             f"https://index.dongchedi.com/dzx_index/analyze/trend_top_event"
-            # f"?rank_type=%E8%BD%BF%E8%BD%A6%E6%A6%9C%E5%8D%95"
             f"?rank_type={rank_type}" 
             f"&id_list={series_id if series_id != -1 else brand_id}"
-            # f"&province=%E5%85%A8%E5%9B%BD"
             f"&province=全国"
             f"&start_date={start_date}"
             f"&end_date={date}"
         )
-        
         logging.info(f"Fetching data from URL: {url}")
 
         response = self.make_request(url)
-        if response and response.status_code == 200:
+        if response:
             try:
                 data = response.json()
                 avg_value = data.get("data", {}).get("event", {}).get(str(series_id if series_id != -1 else brand_id), {}).get("avg_value", None)
@@ -178,86 +130,91 @@ class Scraper:
                 logging.error(f"Error parsing avg_value for brand_id: {brand_id}, series_id: {series_id}")
                 return None
         else:
-            logging.error(f"Failed to fetch avg_value for brand_id {brand_id}, series_id {series_id}. "
-                        f"Status Code: {response.status_code if response else 'N/A'}")
+            logging.error(f"Failed to fetch avg_value for brand_id {brand_id}, series_id {series_id}. ")
             return None
 
+    def generate_dates_list(self):
+        dates_list = []
+        start_date = SCRAPE_DATETIME.date()
+        final_year = 2021
+        current_date = start_date
+
+        while current_date.year > final_year:
+            end_date = current_date.strftime("%Y-%m-%d")
+            start_of_year = current_date.replace(year=current_date.year - 1).strftime("%Y-%m-%d")
+            
+            dates_list.append({"start_date": start_of_year, "end_date": end_date})
+            current_date = current_date.replace(year=current_date.year - 1)
+
+        last_start_date = datetime(final_year, 1, 1).strftime("%Y-%m-%d")
+        last_end_date = datetime(final_year, start_date.month, start_date.day).strftime("%Y-%m-%d")
+        dates_list.append({"start_date": last_start_date, "end_date": last_end_date})
+
+        return dates_list
 
 
-    def scrape_data(self):
-        latest_date = datetime.today().date()
-        start_date = datetime(2021, 1, 1).date()
-        logging.info(f"Scraping data from {start_date} to {latest_date}")
-
-        # Load JSON file with brands
+    def scrape_data(self, page_url):
+        logging.info(f"Processing Page: {page_url}")
         json_path = os.path.join(os.path.dirname(__file__), "brands.json")
         with open(json_path, "r", encoding="utf-8") as file:
             BRANDS_DATA = json.load(file)
+        dates_list = self.generate_dates_list()
 
-        data = []
-
-        # Iterate backward, collecting data year by year
-        current_date = latest_date
-        # while current_date >= start_date:
-        while current_date.year > 2021:  # Stops before reaching 2021
-            end_date = current_date         # date datatype
-            start_of_year = current_date.replace(year=current_date.year - 1).strftime("%Y-%m-%d")
-
-            logging.info(f"\n🔄 Processing data from {start_of_year} to {end_date}...")
-
+        for item in dates_list: 
+            start_date = item["start_date"]
+            end_date = item["end_date"]
+            logging.info(f"Processing data from {start_date} to {end_date}...")
             for brand in BRANDS_DATA:
                 brand_name = brand["outter_brand_name"]
                 brand_id = brand["outter_brand_id"]
                 
-                for series in brand["series"]:  # Iterate through the series list
+                for series in brand["series"]:
                     series_id = series["series_id"]
                     series_name = series["series_name"]
 
-                    logging.info(f"Fetching avg_value for {brand_name} (ID: {brand_id})...")
-
-                  
                     avg_value = self.fetch_avg_value(
                         brand_id=brand_id,
                         brand_name=brand_name,
                         series_id=series_id,
                         series_name=series_name,
-                        start_date=start_of_year,
+                        start_date=start_date,
                         date=end_date
                     )
-                    print("average value:",avg_value)
 
                     if avg_value is not None:
-                        data.append({
-                            "scrape_datetime": SCRAPE_DATETIME,
+                        self.MASTER_LIST.append({
+                            "scrape_datetime": SCRAPE_DATETIME.isoformat(),
                             "data_date": end_date,
                             "brand": brand_name,
                             "model": series_name,
                             "value": avg_value,
                         })
-            # Move back one year
-            current_date = current_date.replace(year=current_date.year - 1)
 
-        return data
-    # endregion
 
-    # region START SCRAPER
     def start_scraper(self):
-        results = self.scrape_data()
-        if len(results) < 1:
-            logging.error("NO DATA SCRAPED. EXITING...")
-            return
+        page_url = f"{BASE_URL}"
+        self.scrape_data(page_url)
 
-        df = pd.DataFrame(results)
-
-        logging.info("GENERATING FINAL OUTPUT...")
-        df.to_csv(output_filename, encoding="utf-8", quotechar='"', quoting=csv.QUOTE_ALL, index=False)
-        logging.info("\n✅ Scraping completed. Data saved.")
-
-def run():
+def run(filename: str):
     scraper = Scraper()
     scraper.start_scraper()
 
+    results = scraper.MASTER_LIST
+    if len(results) < 0:
+        logging.error("NO DATA SCRAPED. EXITING...")
+        return
+    df = pd.DataFrame(results)
+    logging.info("GENERATING FINAL OUTPUT...")
+    df.to_csv(
+        filename,
+        encoding="utf-8",
+        quotechar='"',
+        quoting=csv.QUOTE_ALL,
+        index=False,
+    )
+
 
 if __name__ == "__main__":
-    run()
+    run(filename=output_filename)
     logging.info("ALL DONE")
+
