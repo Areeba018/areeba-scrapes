@@ -1,0 +1,7 @@
+# Do not modify the line below.
+-r idr-requirements.txt 
+
+# Put all your dependencies below this line.
+pandas==1.5.1
+requests==2.28.1
+beautifulsoup4==4.12.2
