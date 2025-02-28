@@ -172,7 +172,7 @@ class Scraper:
                         if ims_id:
                             time_ids.append(ims_id)
                             all_products[ims_id] = {
-                                "scrape_datetime": SCRAPE_DATETIME,
+                                "scrape_datetime": SCRAPE_DATETIME.isoformat(),
                                 "base_url": base_url,
                                 "category": product_category,
                                 "product_url": "https://www.cityelectricsupply.com" + link["href"] if link and link.has_attr("href") else "No URL",
