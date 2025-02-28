@@ -1,3 +1,4 @@
+
 import os
 import json
 import csv
@@ -70,6 +71,14 @@ class Scraper:
         elif method == "POST" and data:
             return self.CLIENT.post(url, data=data, timeout=60)
         return None
+    
+    def fetch_html(self,url):
+        """Fetch the HTML content of a page."""
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            return response.text
+        return None
+
 
 
     def scrape_products(self, base_url):
@@ -81,7 +90,7 @@ class Scraper:
         # Check if this URL requires subcategory extraction
         if base_url in [
             "https://www.cityelectricsupply.com/thhn-wire",
-            "https://www.cityelectricsupply.com/wire-cord-cable"
+            # "https://www.cityelectricsupply.com/wire-cord-cable"
         ]:
             response = requests.get(base_url, headers=HEADERS, impersonate="chrome110")
             soup = BeautifulSoup(response.text, "html.parser")
@@ -102,6 +111,48 @@ class Scraper:
 
                 return all_products, time_ids, stock_ids  # Return early since we handled subcategories
 
+        if base_url in [
+                    "https://www.cityelectricsupply.com/wire-cord-cable"
+                ]:
+            response = requests.get(base_url, headers=HEADERS, impersonate="chrome110")
+            soup = BeautifulSoup(response.text, "html.parser")
+
+
+            # Extract subcategory links
+            subcategories = soup.select(".sub-category-item a")
+            # print(subcategories)
+            if subcategories:
+                subcategory_urls = [
+                    f"https://www.cityelectricsupply.com{a['href']}" for a in subcategories if 'href' in a.attrs
+                ]
+                print(subcategory_urls)
+
+                sub_subcategory_urls = []  # Initialize empty list to store sub-subcategory URLs
+
+                for subcategory_url in subcategory_urls:
+                    # Extract sub-subcategory links
+                    response = requests.get(subcategory_url, headers=HEADERS, impersonate="chrome110")
+                    sub_soup = BeautifulSoup(response.text, "html.parser")
+
+                    sub_subcategories = sub_soup.select(".category-grid.sub-category-grid .item-box .sub-category-item h2.title a")
+                    # print(sub_subcategories)
+
+                    if sub_subcategories:
+                        sub_subcategory_urls = [
+                            f"https://www.cityelectricsupply.com{a['href']}" for a in sub_subcategories if 'href' in a.attrs
+                        ]
+                        print("subbbb:",sub_subcategory_urls)
+                        for sub_url in sub_subcategory_urls:
+                            print(f"🔄 Visiting subcategory: {sub_url}")
+                            sub_product_details, sub_time_ids, sub_stock_ids = self.scrape_products(sub_url)
+                            all_products.update(sub_product_details)
+                            time_ids.extend(sub_time_ids)
+                            stock_ids.extend(sub_stock_ids)
+
+                        return all_products, time_ids, stock_ids  # Return early since we handled subcategories
+
+
+                    
         # Normal product scraping (if no subcategories or for other URLs)
         next_page = base_url  
 
@@ -229,17 +280,27 @@ class Scraper:
             for ims_id, details in product_details.items():
                 details["price"] = imsid_to_price.get(ims_id, "N/A")
                 details["availability"] = stock_availability.get(details["stock_code"], "N/A")
+
+                # ✅ Only override base_url for "https://www.cityelectricsupply.com/wire-cord-cable" because at this url, data drom from sub_sub_category
+                if "wire-cord-cable" in base_url:
+                    details["base_url"] = "https://www.cityelectricsupply.com/wire-cord-cable"
+                else:
+                    details["base_url"] = base_url  # Keep actual base URL for others
+
+
                 all_products.append(details)
 
+        self.MASTER_LIST = all_products  # ✅ Save to MASTER_LIST
         self.save_to_csv(all_products, OUTPUT_FILE)
         print(f"✅ Scraping completed. Data saved to {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     scraper = Scraper()
     scraper.start_scraper()
 
     results = scraper.MASTER_LIST
-    if len(results) < 0:
+    if len(results) == 0:
         logging.error("NO DATA SCRAPED. EXITING...")
         
     df = pd.DataFrame(results)
