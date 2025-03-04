@@ -3,70 +3,69 @@ import time
 import json
 import logging
 import random
-import shutil
 import csv
-from datetime import datetime, timezone
 import requests
 import pandas as pd
+from datetime import datetime, timezone, timedelta
 
-
-BASE_URL = "https://index.dongchedi.com/dzx_index/analyze/trend_top_event"
+# Constants
+BASE_URL = "https://index.dongchedi.com/dzx_index/analyze/trend"
 JOB_NAME = "16800 Dongchedi Index Scrape using Requests"
-output_filename = (
-    os.path.join("16800-Dongchedi Index", 
-    JOB_NAME.split("using")[0].strip().lower().replace(" ", "-") + "-sample.csv"
-)
+output_filename = os.path.join(
+    "16800-Dongchedi Index",
+    JOB_NAME.split("using")[0].strip().lower().replace(" ", "-") + "-sample.csv",
 )
 SCRAPE_DATETIME = datetime.now(timezone.utc)
 
 
 def retry_on_failure(func):
+    """Decorator to retry failed requests."""
     def wrapper(*args, **kwargs):
         MAX_ATTEMPTS = 3
         attempts = MAX_ATTEMPTS
         while attempts > 0:
             try:
-                time.sleep(random.uniform(2.5, 3.5))
+                time.sleep(random.uniform(1.5, 2.5))  # Shorter delay for speed
                 response = func(*args, **kwargs)
                 if response and response.status_code == 200:
                     return response
                 else:
-                    logging.error(f"Request failed. Retrying {MAX_ATTEMPTS - attempts + 1}/{MAX_ATTEMPTS} attempts.")
+                    logging.error(
+                        f"Request failed. Retrying {MAX_ATTEMPTS - attempts + 1}/{MAX_ATTEMPTS} attempts."
+                    )
                     attempts -= 1
-                    time.sleep(10)
+                    time.sleep(5)
             except Exception as e:
-                logging.error(f"An error occurred - Exception: {e}. Retrying {MAX_ATTEMPTS - attempts + 1}/{MAX_ATTEMPTS} attempts.")
+                logging.error(
+                    f"An error occurred - Exception: {e}. Retrying {MAX_ATTEMPTS - attempts + 1}/{MAX_ATTEMPTS} attempts."
+                )
                 attempts -= 1
-                time.sleep(10)
-        logging.warning(f"All attempts failed. Unable to make successful request. URL: {args[1]}")
+                time.sleep(5)
+        logging.warning(f"All attempts failed. Unable to make successful request.")
         return None
+
     return wrapper
 
 
 class Scraper:
-    def __init__(self):
+    def __init__(self, historical=False):
         self.MASTER_LIST = []
-        self.DOWNLOAD_DIR = None
+        self.HISTORICAL = historical
         self.CLIENT = self.make_session()
-        
-        self.DEBUG = False
-        if self.DEBUG:
-            logging.basicConfig(
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                level=logging.DEBUG,
-                datefmt="%d-%b-%y %H:%M:%S",
-            )
-        else:
-            logging.basicConfig(
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                level=logging.INFO,
-                datefmt="%d-%b-%y %H:%M:%S",
-            )
+        self.setup_logging()
 
-        logging.info(f"STARTING SCRAPE... {JOB_NAME}")
+    def setup_logging(self):
+        """Sets up logging configuration."""
+        logging.basicConfig(
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            level=logging.INFO,
+            datefmt="%d-%b-%y %H:%M:%S",
+        )
+        logging.info(f"STARTING SCRAPE... {JOB_NAME} | HISTORICAL: {self.HISTORICAL}")
         time.sleep(2)
 
     def make_session(self, headers=None):
+        """Creates a session with default headers."""
         session = requests.Session()
         default_headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
@@ -77,13 +76,10 @@ class Scraper:
         return session
 
     @retry_on_failure
-    def make_request(self, url, method="GET", data=None):
-        if method == "GET":
-            return self.CLIENT.get(url, timeout=60)
-        elif method == "POST" and data:
-            return self.CLIENT.post(url, data=data, timeout=60)
-        return None
-
+    def make_request(self, url, params=None):
+        """Performs an HTTP GET request."""
+        return self.CLIENT.get(url, params=params, timeout=60)
+    
     def get_rank_type(self, brand_id, series_id):
         params = {
             'outter_brand_id': brand_id,
@@ -109,114 +105,108 @@ class Scraper:
                 logging.error(f"Request failed with status code: {response.status_code}")
         except Exception as e:
             logging.error(f"Error fetching rank type: {e}")
-   
-    def fetch_avg_value(self, brand_id, brand_name, series_id, series_name,start_date, date):
+
+    def fetch_full_year_data(self, brand_id, brand_name, series_id, series_name, year):
+        """Fetches a full year's data in one API call and processes it."""
         rank_type = self.get_rank_type(brand_id, series_id)
-        url = (
-            f"https://index.dongchedi.com/dzx_index/analyze/trend_top_event"
-            f"?rank_type={rank_type}" 
-            f"&id_list={series_id if series_id != -1 else brand_id}"
-            f"&province=全国"
-            f"&start_date={start_date}"
-            f"&end_date={date}"
-        )
-        logging.info(f"Fetching data from URL: {url}")
+        params = {
+            "date": f"{year}-01-01",  # Fetch full year data
+            "province": "全国",
+            "rank_type": {rank_type},
+            "sub_rank_type": "",
+            "id_list": series_id if series_id != -1 else brand_id,
+            "name_list": brand_name,
+        }
 
-        response = self.make_request(url)
-        if response:
-            try:
-                data = response.json()
-                avg_value = data.get("data", {}).get("event", {}).get(str(series_id if series_id != -1 else brand_id), {}).get("avg_value", None)
-                return avg_value
-            except (json.JSONDecodeError, KeyError):
-                logging.error(f"Error parsing avg_value for brand_id: {brand_id}, series_id: {series_id}")
-                return None
-        else:
-            logging.error(f"Failed to fetch avg_value for brand_id {brand_id}, series_id {series_id}. ")
-            return None
+        response = self.make_request(BASE_URL, params=params)
 
-    def generate_dates_list(self):
-        dates_list = []
-        start_date = SCRAPE_DATETIME.date()
-        final_year = 2021
-        current_date = start_date
+        if not response:
+            logging.error(f"❌ Request failed for {year} - {brand_name} - {series_name}")
+            return
 
-        while current_date.year > final_year:
-            end_date = current_date.strftime("%Y-%m-%d")
-            start_of_year = current_date.replace(year=current_date.year - 1).strftime("%Y-%m-%d")
-            
-            dates_list.append({"start_date": start_of_year, "end_date": end_date})
-            current_date = current_date.replace(year=current_date.year - 1)
+        data = response.json()
 
-        last_start_date = datetime(final_year, 1, 1).strftime("%Y-%m-%d")
-        last_end_date = datetime(final_year, start_date.month, start_date.day).strftime("%Y-%m-%d")
-        dates_list.append({"start_date": last_start_date, "end_date": last_end_date})
+        x_axis = data["data"].get("x_axis", [])
+        chart_data = data["data"].get("chart_data", [])
 
-        return dates_list
+        if not chart_data or not x_axis:
+            return  # Skip if no data
 
+        values = chart_data[0].get("value", [])
 
-    def scrape_data(self, page_url):
-        logging.info(f"Processing Page: {page_url}")
+        if len(x_axis) != len(values):
+            return  # Skip if mismatch in data length
+
+        for i in range(len(x_axis)):
+            self.MASTER_LIST.append(
+                {
+                    "scrape_datetime": SCRAPE_DATETIME.isoformat(),
+                    "data_date": x_axis[i],
+                    "brand": brand_name,
+                    "model": series_name,
+                    "value": values[i],
+                }
+            )
+
+        logging.info(f"✅ Data for {year} - {brand_name} - {series_name} saved successfully.")
+
+    def generate_years_list(self):
+        """Generates a list of years to scrape from."""
+        current_year = SCRAPE_DATETIME.year
+        start_year = 2021 if self.HISTORICAL else current_year  # If historical, scrape from 2021
+        return list(range(current_year, start_year - 1, -1))  # Latest year first
+
+    def scrape_data(self):
+        """Loops through all years, then all brands & models for each year."""
         json_path = os.path.join(os.path.dirname(__file__), "brands.json")
+
         with open(json_path, "r", encoding="utf-8") as file:
             BRANDS_DATA = json.load(file)
-        dates_list = self.generate_dates_list()
 
-        for item in dates_list: 
-            start_date = item["start_date"]
-            end_date = item["end_date"]
-            logging.info(f"Processing data from {start_date} to {end_date}...")
+        years = self.generate_years_list()
+
+        # **PRIORITIZE LATEST YEAR FIRST**
+        for year in years:
             for brand in BRANDS_DATA:
                 brand_name = brand["outter_brand_name"]
                 brand_id = brand["outter_brand_id"]
-                
+
                 for series in brand["series"]:
                     series_id = series["series_id"]
                     series_name = series["series_name"]
 
-                    avg_value = self.fetch_avg_value(
-                        brand_id=brand_id,
-                        brand_name=brand_name,
-                        series_id=series_id,
-                        series_name=series_name,
-                        start_date=start_date,
-                        date=end_date
-                    )
-
-                    if avg_value is not None:
-                        self.MASTER_LIST.append({
-                            "scrape_datetime": SCRAPE_DATETIME.isoformat(),
-                            "data_date": end_date,
-                            "brand": brand_name,
-                            "model": series_name,
-                            "value": avg_value,
-                        })
-
+                    self.fetch_full_year_data(brand_id, brand_name, series_id, series_name, year)
 
     def start_scraper(self):
-        page_url = f"{BASE_URL}"
-        self.scrape_data(page_url)
+        """Runs the scraper and saves results."""
+        self.scrape_data()
+        self.save_results()
 
-def run(filename: str):
-    scraper = Scraper()
+    def save_results(self):
+        """Saves extracted data to CSV."""
+        if not self.MASTER_LIST:
+            logging.error("NO DATA SCRAPED. EXITING...")
+            return
+
+        df = pd.DataFrame(self.MASTER_LIST)
+
+        logging.info("GENERATING FINAL OUTPUT...")
+        df.to_csv(
+            output_filename,
+            encoding="utf-8",
+            quotechar='"',
+            quoting=csv.QUOTE_ALL,
+            index=False,
+        )
+
+        logging.info(f"📂 Data saved to {output_filename}")
+
+
+def run(historical=False):
+    scraper = Scraper(historical=historical)
     scraper.start_scraper()
-
-    results = scraper.MASTER_LIST
-    if len(results) < 0:
-        logging.error("NO DATA SCRAPED. EXITING...")
-        return
-    df = pd.DataFrame(results)
-    logging.info("GENERATING FINAL OUTPUT...")
-    df.to_csv(
-        filename,
-        encoding="utf-8",
-        quotechar='"',
-        quoting=csv.QUOTE_ALL,
-        index=False,
-    )
 
 
 if __name__ == "__main__":
-    run(filename=output_filename)
+    run(historical=True)  # Change to `False` for recent data only
     logging.info("ALL DONE")
-
