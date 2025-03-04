@@ -13,7 +13,9 @@ import pandas as pd
 BASE_URL = "https://index.dongchedi.com/dzx_index/analyze/trend_top_event"
 JOB_NAME = "16800 Dongchedi Index Scrape using Requests"
 output_filename = (
+    os.path.join("16800-Dongchedi Index", 
     JOB_NAME.split("using")[0].strip().lower().replace(" ", "-") + "-sample.csv"
+)
 )
 SCRAPE_DATETIME = datetime.now(timezone.utc)
 
