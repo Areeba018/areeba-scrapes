@@ -8,7 +8,7 @@ import logging
 import os
 from scraper import run
 
-JOB_NAME = "Dongchedi Index Scraper"
+JOB_NAME = "16800 Dongchedi Index Scrape using Requests"
 output_filename = os.path.join("16800-Dongchedi Index", JOB_NAME.lower().replace(" ", "-") + "-data.csv")
 
 def get_parser() -> argparse.ArgumentParser:
