@@ -200,37 +200,31 @@ class Scraper:
 
 
     def start_scraper(self):
-        """Runs the scraper and saves results."""
+        """Runs the scraper"""
         self.scrape_data()
-        self.save_results()
-
-    def save_results(self):
-        """Saves extracted data to CSV."""
-        if not self.MASTER_LIST:
-            logging.error("NO DATA SCRAPED. EXITING...")
-            return
-
-        df = pd.DataFrame(self.MASTER_LIST)
-
-        logging.info("GENERATING FINAL OUTPUT...")
-        df.to_csv(
-            output_filename,
-            encoding="utf-8",
-            quotechar='"',
-            quoting=csv.QUOTE_ALL,
-            index=False,
-        )
-
-        logging.info(f"📂 Data saved to {output_filename}")
 
 
-def run(historical=False):
-    scraper = Scraper(historical=historical)
+def run(filename: str):
+    scraper = Scraper(historical=True)
     scraper.start_scraper()
+
+    results = scraper.MASTER_LIST
+    if len(results) == 0:
+        logging.error("NO DATA SCRAPED. EXITING...")
+        return
+    df = pd.DataFrame(results)
+    logging.info("GENERATING FINAL OUTPUT...")
+    df.to_csv(
+        filename,
+        encoding="utf-8",
+        quotechar='"',
+        quoting=csv.QUOTE_ALL,
+        index=False,
+    )
 
 
 if __name__ == "__main__":
-    run(historical=True)  # Change to `False` for recent data only
+    run(filename=output_filename)  # Change to `False` for recent data only
     logging.info("ALL DONE")
 
 
