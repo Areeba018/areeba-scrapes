@@ -106,13 +106,14 @@ class Scraper:
         except Exception as e:
             logging.error(f"Error fetching rank type: {e}")
 
-    def fetch_full_year_data(self, brand_id, brand_name, series_id, series_name, year):
-        """Fetches a full year's data in one API call and processes it."""
+    def fetch_full_year_data(self, brand_id, brand_name, series_id, series_name, start_date, end_date):
+        """Fetches data for the given date range and processes all available dates."""
         rank_type = self.get_rank_type(brand_id, series_id)
+
         params = {
-            "date": f"{year}-01-01",  # Fetch full year data
+            "date": end_date,  # Fetch the latest available data (up to yesterday)
             "province": "全国",
-            "rank_type": {rank_type},
+            "rank_type": rank_type,  # Corrected from set `{rank_type}` to just `rank_type`
             "sub_rank_type": "",
             "id_list": series_id if series_id != -1 else brand_id,
             "name_list": brand_name,
@@ -121,7 +122,7 @@ class Scraper:
         response = self.make_request(BASE_URL, params=params)
 
         if not response:
-            logging.error(f"❌ Request failed for {year} - {brand_name} - {series_name}")
+            logging.error(f"❌ Request failed for {start_date} to {end_date} - {brand_name} - {series_name}")
             return
 
         data = response.json()
@@ -130,43 +131,63 @@ class Scraper:
         chart_data = data["data"].get("chart_data", [])
 
         if not chart_data or not x_axis:
-            return  # Skip if no data
+            logging.warning(f"⚠ No data found for {start_date} to {end_date} - {brand_name} - {series_name}")
+            return
 
         values = chart_data[0].get("value", [])
 
         if len(x_axis) != len(values):
-            return  # Skip if mismatch in data length
+            logging.error(f"❌ Mismatch in date-value lengths for {start_date} to {end_date} - {brand_name} - {series_name}")
+            return
 
         for i in range(len(x_axis)):
             self.MASTER_LIST.append(
                 {
                     "scrape_datetime": SCRAPE_DATETIME.isoformat(),
-                    "data_date": x_axis[i],
+                    "data_date": x_axis[i],  # Capture all available dates
                     "brand": brand_name,
                     "model": series_name,
                     "value": values[i],
                 }
             )
 
-        logging.info(f"✅ Data for {year} - {brand_name} - {series_name} saved successfully.")
+        logging.info(f"✅ Data from {start_date} to {end_date} for {brand_name} - {series_name} saved successfully.")
+
+
 
     def generate_years_list(self):
-        """Generates a list of years to scrape from."""
-        current_year = SCRAPE_DATETIME.year
-        start_year = 2021 if self.HISTORICAL else current_year  # If historical, scrape from 2021
-        return list(range(current_year, start_year - 1, -1))  # Latest year first
+        """Generates a list of date ranges, scraping one year at a time until 2021-01-01."""
+        dates_list = []
+        end_date = (SCRAPE_DATETIME - timedelta(days=1)).date()  # Start from yesterday
+        final_date = datetime(2021, 1, 1).date()  # Stop at 2021-01-01
+
+        while end_date >= final_date:
+            start_date = end_date - timedelta(days=365)  # Move one year back
+
+            # Ensure we don't go before 2021-01-01
+            if start_date < final_date:
+                start_date = final_date
+
+            dates_list.append({"start_date": start_date.strftime("%Y-%m-%d"), "end_date": end_date.strftime("%Y-%m-%d")})
+            end_date = start_date - timedelta(days=1)  # Move to previous period
+
+        return dates_list
+
+
 
     def scrape_data(self):
-        """Loops through all years, then all brands & models for each year."""
+        """Loops through all years and ensures we capture all available dates up to 2021-01-01."""
         json_path = os.path.join(os.path.dirname(__file__), "brands.json")
 
         with open(json_path, "r", encoding="utf-8") as file:
             BRANDS_DATA = json.load(file)
 
-        years = self.generate_years_list()
+        years = self.generate_years_list()  # Get all year periods (2025 → 2024 → 2023 → ... → 2021)
 
-        # **PRIORITIZE LATEST YEAR FIRST**
-        for year in years:
+        for year_range in years:
+            start_date = year_range["start_date"]
+            end_date = year_range["end_date"]
+
             for brand in BRANDS_DATA:
                 brand_name = brand["outter_brand_name"]
                 brand_id = brand["outter_brand_id"]
@@ -175,7 +196,8 @@ class Scraper:
                     series_id = series["series_id"]
                     series_name = series["series_name"]
 
-                    self.fetch_full_year_data(brand_id, brand_name, series_id, series_name, year)
+                    self.fetch_full_year_data(brand_id, brand_name, series_id, series_name, start_date, end_date)
+
 
     def start_scraper(self):
         """Runs the scraper and saves results."""
@@ -210,3 +232,26 @@ def run(historical=False):
 if __name__ == "__main__":
     run(historical=True)  # Change to `False` for recent data only
     logging.info("ALL DONE")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
