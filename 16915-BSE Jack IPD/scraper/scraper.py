@@ -75,23 +75,17 @@ class Scraper:
         """Creates a session with default headers."""
         session = requests.Session()
         default_headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Linux"',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+            'Referer': BASE_URL,
+            'Origin': 'https://www.bseindia.com',
+            'Content-Type': 'application/x-www-form-urlencoded',
         }
         session.headers.update(headers or default_headers)
         return session
 
     @retry_on_failure
     def make_request(self, url, params=None):
+        """Performs an HTTP GET request."""
         return self.CLIENT.get(url, params=params, timeout=60)
 
     def scrape_data(self):
@@ -112,6 +106,8 @@ class Scraper:
             # Write CSV Header
             writer.writerow(["scrape_datetime", "instrument_type", "date", "number_of_trades", "volume", "notional_turnover", "premium_turnover"])
 
+            # Create a session to maintain cookies
+            session = self.CLIENT
 
             # Loop through each month
             while start_date < today:
@@ -120,25 +116,23 @@ class Scraper:
                 next_month = (start_date.replace(day=28) + timedelta(days=4)).replace(day=1)
                 to_date = min(next_month, today).strftime('%d/%m/%Y')
 
-                _ = self.make_request('https://www.bseindia.com/')
                 # Perform GET request to fetch the page
-                time.sleep(random.uniform(2, 4))
                 response = self.make_request(BASE_URL)
                 if response.status_code != 200:
                     print("❌ Failed to load the page!")
                     exit()
 
                 soup = BeautifulSoup(response.text, 'html.parser')
-                # print(soup)
+                print(soup)
 
                 # Extract hidden input values
-                def get_hidden_value(soup, name):
+                def get_hidden_value(name):
                     input_tag = soup.find("input", {"name": name})
                     return input_tag["value"] if input_tag else ""
 
-                viewstate = get_hidden_value(soup, "__VIEWSTATE")
-                eventvalidation = get_hidden_value(soup, "__EVENTVALIDATION")
-                viewstategenerator = get_hidden_value(soup, "__VIEWSTATEGENERATOR")
+                viewstate = get_hidden_value("__VIEWSTATE")
+                eventvalidation = get_hidden_value("__EVENTVALIDATION")
+                viewstategenerator = get_hidden_value("__VIEWSTATEGENERATOR")
 
                 # Print hidden values
                 print("\n🔍 Hidden Values Found:")
@@ -147,23 +141,19 @@ class Scraper:
                 print(f"VIEWSTATEGENERATOR: {viewstategenerator}\n")
 
                 # Extract Segment and Instrument dropdown options
-                # segment_dropdown = soup.find("select", id="ContentPlaceHolder1_ddlsegment")
-                # segment_options = {opt.get("value"): opt.text.strip() for opt in segment_dropdown.find_all("option") if opt.get("value")}
-                # instrument_dropdown = soup.find("select", id="ContentPlaceHolder1_ddlIntrument")
-                # instrument_options = {opt.get("value"): opt.text.strip() for opt in instrument_dropdown.find_all("option") if opt.get("value")}
-               
-                filters = [
-                    {"segment_name":"Index Derivative","segment_code": "ID", "segments":  {"Index Futures": "IF", "Index Options": "IO"}},
-                    {"segment_name":"Equity Derivative","segment_code": "ED", "segments":  {"Equity Futures": "SF", "Index Options": "SO"}},
-                ]
+                segment_dropdown = soup.find("select", id="ContentPlaceHolder1_ddlsegment")
+                segment_options = {opt.get("value"): opt.text.strip() for opt in segment_dropdown.find_all("option") if opt.get("value")}
 
+                instrument_dropdown = soup.find("select", id="ContentPlaceHolder1_ddlIntrument")
+                instrument_options = {opt.get("value"): opt.text.strip() for opt in instrument_dropdown.find_all("option") if opt.get("value")}
 
-                for filter in filters:
-                    for instrument, code in filter["segments"].items():
+                # Iterate over all segment and instrument combinations
+                for segment, segment_name in segment_options.items():
+                    for instrument, instrument_name in instrument_options.items():
                         # Prepare data payload
                         data = {
-                            'ctl00$ContentPlaceHolder1$ddlsegment': filter['segment_name'],
-                            'ctl00$ContentPlaceHolder1$ddlIntrument': code,
+                            'ctl00$ContentPlaceHolder1$ddlsegment': segment,
+                            'ctl00$ContentPlaceHolder1$ddlIntrument': instrument,
                             'ctl00$ContentPlaceHolder1$ddlUnderLine': '0',
                             'ctl00$ContentPlaceHolder1$txtDate': from_date,
                             'ctl00$ContentPlaceHolder1$txtTodate': to_date,
@@ -173,17 +163,17 @@ class Scraper:
                             '__EVENTVALIDATION': eventvalidation,
                         }
 
-                        print(f"📡 Fetching data for Segment: {filter['segment_name']}, Instrument: {instrument} From Date: {from_date} to {to_date}...")
+                        print(f"📡 Fetching data for Segment: {segment_name}, Instrument: {instrument_name} From Date: {from_date} to {to_date}...")
 
                         # Send POST request
-                        time.sleep(random.uniform(2, 3))
-                        response = self.CLIENT.post(BASE_URL, headers=self.CLIENT.headers, data=data)
+                        response = session.post(BASE_URL, headers=session.headers, data=data)
 
                         # ✅ Check if request was successful
                         if response.status_code == 200:
-                            bs = BeautifulSoup(response.text, 'html.parser')
+                            soup = BeautifulSoup(response.text, 'html.parser')
+
                             # Find table with data
-                            table = bs.find("table", {"width": "100%"})
+                            table = soup.find("table", {"width": "100%"})
 
                             if table:
                                 rows = table.find_all("tr")[1:]  # Skip header row
@@ -201,31 +191,22 @@ class Scraper:
 
                                         # Append data to MASTER_LIST for later processing
                                         self.MASTER_LIST.append([
-                                            SCRAPE_DATETIME.isoformat(),
-                                            instrument,  # Instrument type
+                                            datetime.utcnow().isoformat() + "Z",  # Scrape datetime in ISO format
+                                            instrument_name,  # Instrument type
                                             trade_date,
                                             num_trades,
                                             volume,
                                             notional_turnover,
                                             premium_turnover
                                         ])
-                                        print(f"📡 ✅ Data saved for Segment: {filter['segment_name']}, Instrument: {instrument} From Date: {from_date} to {to_date}...")
-                            
+                                        print(f"📡 ✅ Data saved for Segment: {segment_name}, Instrument: {instrument_name} From Date: {from_date} to {to_date}...")
 
                             else:
-                                print(f"⚠️ No data table found for {filter['segment_name']} - {instrument}")
-                            
-                            # for next requuest
-                            viewstate = get_hidden_value(bs, "__VIEWSTATE")
-                            eventvalidation = get_hidden_value(bs, "__EVENTVALIDATION")
-                            viewstategenerator = get_hidden_value(bs, "__VIEWSTATEGENERATOR")
-                            print(f"VIEWSTATE: {viewstate[:100]}...")
-
+                                print(f"⚠️ No data table found for {segment_name} - {instrument_name}")
 
                         else:
-                            print(f"❌ Failed to fetch data for {filter['segment_name']} - {instrument} From Date: {from_date} to {to_date}...")
-                            time.sleep(random.uniform(60, 120))
-                            self.CLIENT = self.make_session()
+                            print(f"❌ Failed to fetch data for {segment_name} - {instrument_name} From Date: {from_date} to {to_date}...")
+
                 # Move to the next month
                 start_date = next_month
 
